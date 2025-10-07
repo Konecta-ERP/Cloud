@@ -1,0 +1,26 @@
+name: CI Skeleton
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up environment
+        run: echo "Setting up environment for skeleton pipeline"
+
+      - name: Build placeholder
+        run: echo "Build step goes here"
+
+      - name: Run tests
+        run: echo "Run unit tests here"
+
+      - name: Notify success
+        run: echo "CI pipeline finished successfully!"
