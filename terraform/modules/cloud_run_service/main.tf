@@ -8,7 +8,7 @@ resource "google_cloud_run_v2_service" "service" {
 
   template {
     service_account = var.service_account_email
-    
+
     # VPC Access 
     dynamic "vpc_access" {
       for_each = var.vpc_connector_id != null ? [1] : []

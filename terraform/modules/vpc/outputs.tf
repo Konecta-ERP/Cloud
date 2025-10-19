@@ -23,6 +23,21 @@ output "subnet_name" {
   value       = google_compute_subnetwork.subnet.name
 }
 
+output "subnet_self_link" {
+  description = "Subnet self link"
+  value       = google_compute_subnetwork.subnet.self_link
+}
+
+output "pods_range_name" {
+  description = "Name of the secondary range for pods"
+  value       = "pods"
+}
+
+output "services_range_name" {
+  description = "Name of the secondary range for services"
+  value       = "services"
+}
+
 output "private_vpc_connection" {
   description = "Private VPC connection for Cloud SQL"
   value       = google_service_networking_connection.private_vpc_connection.network

@@ -7,7 +7,7 @@ output "enabled_services" {
     google_project_service.cloud_sql_admin.service,
     google_project_service.secret_manager.service,
     google_project_service.compute.service,
-    google_project_service.vpcaccess.service,
     google_project_service.service_networking.service,
+    google_project_service.container.service,
   ]
 }

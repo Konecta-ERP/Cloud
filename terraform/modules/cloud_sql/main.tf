@@ -17,7 +17,7 @@ resource "google_sql_database_instance" "main" {
       start_time                     = var.backup_start_time
       point_in_time_recovery_enabled = var.point_in_time_recovery_enabled
       transaction_log_retention_days = var.transaction_log_retention_days
-      
+
       backup_retention_settings {
         retained_backups = var.retained_backups
         retention_unit   = "COUNT"
@@ -27,9 +27,9 @@ resource "google_sql_database_instance" "main" {
     ip_configuration {
       ipv4_enabled    = var.public_ip_enabled
       private_network = var.private_network_id
-      
+
       enable_private_path_for_google_cloud_services = var.private_network_id != null ? true : false
-      
+
       ssl_mode = "ALLOW_UNENCRYPTED_AND_ENCRYPTED"
 
       dynamic "authorized_networks" {

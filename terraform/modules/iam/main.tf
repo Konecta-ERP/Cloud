@@ -48,7 +48,7 @@ resource "google_project_iam_member" "build_sa_user" {
   project = var.project_id
   role    = "roles/iam.serviceAccountUser"
   member  = "serviceAccount:${var.build_sa_email}"
-  
+
   condition {
     title       = "Allow impersonation of ${each.key} runtime SA"
     description = "Build SA can impersonate this runtime SA for deployment"

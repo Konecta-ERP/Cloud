@@ -144,7 +144,7 @@ module "keycloak_db" {
   deletion_protection            = false
   backup_enabled                 = true
   point_in_time_recovery_enabled = false
-  
+
   # PRIVATE IP CONFIGURATION
   public_ip_enabled          = false
   private_network_id         = module.vpc.vpc_id
@@ -210,96 +210,86 @@ module "keycloak" {
   depends_on = [module.keycloak_db, module.iam, module.vpc_connector]
 }
 
+
 # ============================================================================
-# MICROSERVICES
+# GKE CLUSTER
 # ============================================================================
 
-# Auth Service
-module "auth_service" {
-  source = "../../modules/microservice"
+module "gke_cluster" {
+  source = "../../modules/gke_cluster"
 
-  project_id            = var.project_id
-  region                = var.region
-  environment           = "dev"
-  service_name          = "auth-service"
-  service_account_email = module.service_accounts.runtime_sa_emails["auth-service"]
+  project_id   = var.project_id
+  location     = var.region # Regional cluster for HA
+  cluster_name = "erp-cluster-dev"
 
-  database_name = "auth"
-  db_user_name  = "auth_user"
+  network    = module.vpc.vpc_name
+  subnetwork = module.vpc.subnet_name
 
-  # PRIVATE IP CONFIGURATION
-  public_ip_enabled          = false
-  private_network_id         = module.vpc.vpc_id
-  private_network_dependency = [module.vpc.private_vpc_connection]
-  authorized_networks        = []
+  master_ipv4_cidr_block = "172.16.0.0/28"
 
-  # VPC CONNECTOR
-  vpc_connector_id   = module.vpc_connector.connector_id
-  vpc_egress_setting = "PRIVATE_RANGES_ONLY"
+  pods_secondary_range_name     = module.vpc.pods_range_name
+  services_secondary_range_name = module.vpc.services_range_name
 
-  additional_env_vars = {
-    KEYCLOAK_URL = module.keycloak.service_url
+  deletion_protection = false
+
+  labels = {
+    environment = "dev"
+    managed_by  = "terraform"
   }
 
-  depends_on = [module.iam, module.vpc, module.vpc_connector]
+  network_dependency = module.vpc.private_vpc_connection
+
+  depends_on = [module.vpc]
 }
+# ============================================================================
+# GKE NODE POOL
+# ============================================================================
 
-# HR Service
-module "hr_service" {
-  source = "../../modules/microservice"
+module "gke_node_pool" {
+  source = "../../modules/gke_node_pool"
 
-  project_id            = var.project_id
-  region                = var.region
-  environment           = "dev"
-  service_name          = "hr-service"
-  service_account_email = module.service_accounts.runtime_sa_emails["hr-service"]
+  project_id     = var.project_id
+  location       = var.region
+  cluster_name   = module.gke_cluster.cluster_name
+  node_pool_name = "primary-node-pool"
 
-  database_name = "hr"
-  db_user_name  = "hr_user"
+  initial_node_count = 1
+  min_node_count     = 1
+  max_node_count     = 3
 
-  # PRIVATE IP CONFIGURATION
-  public_ip_enabled          = false
-  private_network_id         = module.vpc.vpc_id
-  private_network_dependency = [module.vpc.private_vpc_connection]
-  authorized_networks        = []
+  machine_type = "e2-medium"
+  disk_size_gb = 50
+  preemptible  = true # Use preemptible for dev (cheaper!)
 
-  # VPC CONNECTOR
-  vpc_connector_id   = module.vpc_connector.connector_id
-  vpc_egress_setting = "PRIVATE_RANGES_ONLY"
+  service_account = module.service_accounts.terraform_sa_email
 
-  additional_env_vars = {
-    AUTH_SERVICE = module.auth_service.service_url
+  labels = {
+    environment = "dev"
+    managed_by  = "terraform"
   }
 
-  depends_on = [module.iam, module.vpc, module.vpc_connector]
+  tags = ["gke-node", "erp-dev"]
+
+  depends_on = [module.gke_cluster]
 }
+# ============================================================================
+# CLOUD NAT (for private GKE nodes to access internet)
+# ============================================================================
 
-# Finance Service
-module "finance_service" {
-  source = "../../modules/microservice"
+module "cloud_nat" {
+  source = "../../modules/cloud_nat"
 
-  project_id            = var.project_id
-  region                = var.region
-  environment           = "dev"
-  service_name          = "finance-service"
-  service_account_email = module.service_accounts.runtime_sa_emails["finance-service"]
+  project_id  = var.project_id
+  region      = var.region
+  network     = module.vpc.vpc_name
+  router_name = "erp-router-dev"
+  nat_name    = "erp-nat-dev"
 
-  database_name = "finance"
-  db_user_name  = "finance_user"
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 
-  # PRIVATE IP CONFIGURATION
-  public_ip_enabled          = false
-  private_network_id         = module.vpc.vpc_id
-  private_network_dependency = [module.vpc.private_vpc_connection]
-  authorized_networks        = []
+  enable_logging = true
+  log_filter     = "ERRORS_ONLY"
 
-  # VPC CONNECTOR
-  vpc_connector_id   = module.vpc_connector.connector_id
-  vpc_egress_setting = "PRIVATE_RANGES_ONLY"
-
-  additional_env_vars = {
-    AUTH_SERVICE = module.auth_service.service_url
-  }
-
-  depends_on = [module.iam, module.vpc, module.vpc_connector]
+  depends_on = [module.vpc]
 }

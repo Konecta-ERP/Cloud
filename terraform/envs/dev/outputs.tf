@@ -89,57 +89,13 @@ output "keycloak_db_password" {
   sensitive   = true
 }
 
-# ============================================================================
-# MICROSERVICES
-# ============================================================================
-
-# Auth Service
-output "auth_service_url" {
-  description = "Auth service URL"
-  value       = module.auth_service.service_url
+output "gke_cluster_name" {
+  description = "GKE cluster name for kubectl config"
+  value       = module.gke_cluster.cluster_name
 }
 
-output "auth_db_private_ip" {
-  description = "Auth database private IP"
-  value       = module.auth_service.database_private_ip_address
-}
-
-output "auth_db_password" {
-  description = "Auth database password"
-  value       = module.auth_service.database_password
-  sensitive   = true
-}
-
-# HR Service
-output "hr_service_url" {
-  description = "HR service URL"
-  value       = module.hr_service.service_url
-}
-
-output "hr_db_private_ip" {
-  description = "HR database private IP"
-  value       = module.hr_service.database_private_ip_address
-}
-
-output "hr_db_password" {
-  description = "HR database password"
-  value       = module.hr_service.database_password
-  sensitive   = true
-}
-
-# Finance Service
-output "finance_service_url" {
-  description = "Finance service URL"
-  value       = module.finance_service.service_url
-}
-
-output "finance_db_private_ip" {
-  description = "Finance database private IP"
-  value       = module.finance_service.database_private_ip_address
-}
-
-output "finance_db_password" {
-  description = "Finance database password"
-  value       = module.finance_service.database_password
+output "gke_cluster_endpoint" {
+  description = "GKE cluster endpoint"
+  value       = module.gke_cluster.cluster_endpoint
   sensitive   = true
 }

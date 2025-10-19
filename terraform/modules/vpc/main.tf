@@ -5,7 +5,7 @@ resource "google_compute_network" "vpc" {
   project                 = var.project_id
 }
 
-# Subnet for general workloads
+# Subnet for GKE nodes with secondary ranges for pods and services
 resource "google_compute_subnetwork" "subnet" {
   name          = "${var.vpc_name}-subnet-${var.region}"
   ip_cidr_range = var.subnet_cidr
@@ -14,6 +14,17 @@ resource "google_compute_subnetwork" "subnet" {
   project       = var.project_id
 
   private_ip_google_access = true
+
+  # Secondary IP ranges for GKE
+  secondary_ip_range {
+    range_name    = "pods"
+    ip_cidr_range = var.pods_cidr
+  }
+
+  secondary_ip_range {
+    range_name    = "services"
+    ip_cidr_range = var.services_cidr
+  }
 }
 
 # Reserve IP range for Private Services Access (Cloud SQL)
