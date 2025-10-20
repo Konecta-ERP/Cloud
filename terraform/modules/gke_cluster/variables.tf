@@ -79,3 +79,15 @@ variable "network_dependency" {
   type        = any
   default     = null
 }
+
+variable "cluster_autoscaling_profile" {
+  description = "The autoscaling profile for the cluster (BALANCED, OPTIMIZE_UTILIZATION, COMPACT)"
+  type        = string
+  default     = "BALANCED" # Default to BALANCED for safety, will override in envs/dev
+}
+
+variable "min_master_version" {
+  description = "The minimum GKE master version. If not specified, GKE will manage it via release channel."
+  type        = string
+  default     = null # Let release channel manage by default
+}
