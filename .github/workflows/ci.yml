@@ -1,26 +1,225 @@
-name: CI Skeleton
+name: Terraform CI - GCP (ERP Konecta)
 
+# Triggers
 on:
-  push:
-    branches: [ main, develop ]
   pull_request:
-    branches: [ develop ]
+    branches: ["develop", "main"]
+  push:
+    branches: ["develop", "main"]
+  workflow_dispatch:
+
+env:
+  # Project-specific defaults (can override via tfvars or GH secrets)
+  GCP_PROJECT: "erp-konecta"
+  GCP_REGION: "europe-west1"
+  TF_BACKEND_BUCKET: "erp-konecta-terraform-state"
+  TF_BACKEND_PREFIX: "dev/terraform.tfstate"
+  TF_VERSION: "1.6.5"
+  # If true -> make scanning steps soft-fail (non-blocking). Set to "false" for strict enforcement.
+  SOFT_FAIL_SCANS: "true"
+  # Slack webhook stored as secret
+  SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
 
 jobs:
-  build:
+  # -------------------------
+  # Job: Lint + Static Checks
+  # -------------------------
+  lint-and-scan:
+    name: Lint & Security Scans (fmt, tflint, tfsec, validate)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up environment
-        run: echo "Setting up environment for skeleton pipeline"
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Build placeholder
-        run: echo "Build step goes here"
+      - name: Install tflint
+        run: |
+          curl -sL https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
 
-      - name: Run tests
-        run: echo "Run unit tests here"
+      - name: terraform fmt (check)
+        id: fmt
+        run: |
+          echo "Checking terraform fmt..."
+          terraform fmt -check -recursive
+        continue-on-error: ${{ eq(env.SOFT_FAIL_SCANS, 'true') }}
 
-      - name: Notify success
-        run: echo "CI pipeline finished successfully!"
+      - name: tflint (project)
+        id: tflint
+        run: |
+          echo "Running tflint..."
+          tflint --init || true
+          tflint || true
+        continue-on-error: ${{ eq(env.SOFT_FAIL_SCANS, 'true') }}
+
+      - name: terraform validate (per-module)
+        id: validate
+        run: |
+          set -e
+          # if using multiple module dirs, iterate
+          for d in $(find . -maxdepth 3 -type f -name "main.tf" -exec dirname {} \; | sort -u); do
+            echo "=== validate $d ==="
+            (cd "$d" && terraform init -backend=false && terraform validate) || exit 1
+          done
+        continue-on-error: ${{ eq(env.SOFT_FAIL_SCANS, 'true') }}
+
+      - name: Run tfsec (security scanner)
+        id: tfsec
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          soft_fail: ${{ env.SOFT_FAIL_SCANS == 'true' }}
+          format: sarif
+          output: tfsec.sarif
+
+      - name: Upload scan artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfsec-sarif
+          path: tfsec.sarif
+
+  # -------------------------
+  # Job: Terraform Plan
+  # -------------------------
+  plan:
+    name: Terraform Plan (GCS backend)
+    runs-on: ubuntu-latest
+    needs: lint-and-scan
+    env:
+      GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+      GOOGLE_PROJECT: ${{ env.GCP_PROJECT }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init (with GCS backend)
+        id: init
+        run: |
+          # iterate directories containing main.tf to init per-environment/module if needed
+          for d in $(find . -maxdepth 3 -type f -name "main.tf" -exec dirname {} \; | sort -u); do
+            echo "=== init $d ==="
+            (cd "$d" && terraform init -input=false -backend-config="bucket=${TF_BACKEND_BUCKET}" -backend-config="prefix=${TF_BACKEND_PREFIX}") || exit 1
+          done
+
+      - name: Terraform Plan (per module)
+        id: tfplan
+        run: |
+          rm -f /tmp/tfplans || true
+          mkdir -p /tmp/tfplans
+          for d in $(find . -maxdepth 3 -type f -name "main.tf" -exec dirname {} \; | sort -u); do
+            echo "=== plan $d ==="
+            (
+              cd "$d" &&
+              terraform plan -input=false -no-color -out=tfplan.binary || true &&
+              terraform show -json tfplan.binary > /tmp/tfplans/$(echo $d | tr '/' '-' | sed 's/^-//').plan.json || true
+            )
+          done
+          ls -lah /tmp/tfplans || true
+
+      - name: Upload Plan Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plans
+          path: /tmp/tfplans
+
+      - name: Generate Plan Summary (short)
+        id: plan-summary
+        run: |
+          echo "Plan summary:" > plan-summary.txt || true
+          for f in /tmp/tfplans/*.plan.json; do
+            echo "---- $f ----" >> plan-summary.txt || true
+            jq -r '.resource_changes[]? | "\(.change.actions) \(.type) \(.name)"' "$f" >> plan-summary.txt 2>/dev/null || echo "no-changes" >> plan-summary.txt
+          done
+          cat plan-summary.txt
+        continue-on-error: false
+
+      - name: Create/Update PR comment with Plan summary
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### Terraform Plan for `${{ env.GCP_PROJECT }}`
+            Branch: `${{ github.ref_name }}`
+            Triggered by: `${{ github.actor }}`
+            View full artifacts in the workflow run.
+            **Plan summary (short):**
+            ```
+            ${{ steps.plan-summary.outputs.plan-summary || '' }}
+            ```
+      # note: if heavy plan content, prefer linking to artifact rather than huge inline text
+
+      - name: Slack - Notify (always)
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,commit,author,workflow,job
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+
+  # -------------------------
+  # Job: Optional Apply (manual)
+  # -------------------------
+  apply:
+    name: Apply to Staging (manual approval)
+    runs-on: ubuntu-latest
+    needs: plan
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v1
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+          service_account_key: ${{ secrets.GCP_SA_KEY }}
+          export_default_credentials: true
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Manual approval (wait)
+        uses: chrislennon/action-wait-for-approval@v1
+        with:
+          approval_message: "Approve Terraform apply for staging/erp-konecta?"
+          reviewers: "team-lead"   # optional, replace or remove; this action posts a comment and waits
+
+      - name: Terraform Apply (per module)
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          for d in $(find . -maxdepth 3 -type f -name "main.tf" -exec dirname {} \; | sort -u); do
+            echo "=== apply $d ==="
+            (cd "$d" && terraform apply -input=false -auto-approve) || exit 1
+          done
+
+      - name: Slack - Apply Notification
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,commit,author,workflow,job
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
