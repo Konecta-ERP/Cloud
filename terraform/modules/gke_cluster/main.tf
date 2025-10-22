@@ -78,12 +78,8 @@ resource "google_container_cluster" "primary" {
   }
 
   # Set minimum master version, or let release channel handle it
-  dynamic "min_master_version" {
-    for_each = var.min_master_version != null ? [var.min_master_version] : []
-    content {
-      version = min_master_version.value
-    }
-  }
+  min_master_version = var.min_master_version != null ? var.min_master_version : null
+
 
   # Logging and monitoring
   logging_service    = "logging.googleapis.com/kubernetes"
