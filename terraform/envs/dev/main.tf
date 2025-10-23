@@ -245,7 +245,8 @@ module "gke_cluster" {
   network    = module.vpc.vpc_name
   subnetwork = module.vpc.subnet_name
 
-  master_ipv4_cidr_block = "172.16.0.0/28"
+  master_ipv4_cidr_block      = "172.16.0.0/28"
+  cluster_autoscaling_profile = "OPTIMIZE_UTILIZATION"
 
   pods_secondary_range_name     = module.vpc.pods_range_name
   services_secondary_range_name = module.vpc.services_range_name
@@ -261,11 +262,12 @@ module "gke_cluster" {
 
   depends_on = [module.vpc]
 }
+
 # ============================================================================
 # GKE NODE POOL
 # ============================================================================
 
-module "gke_node_pool" {
+module "gke_node_pool_default" {
   source = "../../modules/gke_node_pool"
 
   project_id     = var.project_id
@@ -279,7 +281,7 @@ module "gke_node_pool" {
 
   machine_type = "e2-medium"
   disk_size_gb = 50
-  preemptible  = true # Use preemptible for dev (cheaper!)
+  preemptible  = false # Use preemptible for dev (cheaper!), # Default pool should generally be non-preemptible
 
   service_account = module.service_accounts.terraform_sa_email
 
@@ -292,6 +294,40 @@ module "gke_node_pool" {
 
   depends_on = [module.gke_cluster]
 }
+
+
+# New: GKE Node Pool for Preemptible/Spot Workloads
+# This is where significant cost savings come from for interruptible workloads.
+module "gke_node_pool_spot" {
+  source = "../../modules/gke_node_pool"
+
+  project_id     = var.project_id
+  location       = var.region
+  cluster_name   = module.gke_cluster.cluster_name
+  node_pool_name = "spot-node-pool"
+
+  # Allow scaling down to zero for maximum cost savings when no spot workloads are running
+  initial_node_count = 0
+  min_node_count     = 0
+  max_node_count     = 5 # Allow more scale for burstable spot workloads
+
+  machine_type = "e2-small"    # Even smaller and cheaper instance type
+  disk_size_gb = 30            # Smaller disk for temporary workloads
+  disk_type    = "pd-standard" # Cheaper disk
+  preemptible  = true          # CRITICAL: Enables Spot VM behavior for this pool
+
+  service_account = module.service_accounts.terraform_sa_email # Or a dedicated SA for spot
+
+  labels = {
+    environment   = "dev"
+    managed_by    = "terraform"
+    workload_type = "spot" # Useful label for identifying node purpose
+  }
+  tags        = ["gke-node", "erp-dev", "spot-pool"]
+  node_taints = [{ key = "workload-type", value = "spot", effect = "PREFER_NO_SCHEDULE" }] # Taint to direct pods
+  depends_on  = [module.gke_cluster]
+}
+
 # ============================================================================
 # CLOUD NAT (for private GKE nodes to access internet)
 # ============================================================================

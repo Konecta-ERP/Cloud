@@ -88,3 +88,13 @@ variable "max_unavailable" {
   type        = number
   default     = 0
 }
+
+variable "node_taints" {
+  description = "List of taints to apply to the nodes in the node pool."
+  type = list(object({
+    key    = string
+    value  = string
+    effect = string # e.g., "NO_SCHEDULE", "PREFER_NO_SCHEDULE", "NO_EXECUTE"
+  }))
+  default = []
+}

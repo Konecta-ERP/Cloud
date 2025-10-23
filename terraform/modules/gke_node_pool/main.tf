@@ -41,6 +41,16 @@ resource "google_container_node_pool" "primary" {
       }
     )
 
+    # Node Taints for scheduling specific workloads
+    dynamic "taint" {
+      for_each = var.node_taints
+      content {
+        key    = taint.value.key
+        value  = taint.value.value
+        effect = taint.value.effect
+      }
+    }
+
     # Node metadata
     metadata = {
       disable-legacy-endpoints = "true"
