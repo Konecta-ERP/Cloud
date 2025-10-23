@@ -16,6 +16,14 @@ output "vpc_name" {
   description = "VPC network name"
   value       = module.vpc.vpc_name
 }
+# ============================================================================
+# FIREWALL OUTPUTS
+# ============================================================================
+
+output "firewall_rules" {
+  description = "List of firewall rules created"
+  value       = module.firewall.firewall_rules
+}
 
 output "vpc_connector_id" {
   description = "VPC connector ID"
@@ -98,4 +106,34 @@ output "gke_cluster_endpoint" {
   description = "GKE cluster endpoint"
   value       = module.gke_cluster.cluster_endpoint
   sensitive   = true
+}
+# ============================================================================
+# MONITORING OUTPUTS
+# ============================================================================
+
+output "monitoring_dashboard_id" {
+  description = "Cloud Monitoring Dashboard ID"
+  value       = module.monitoring.dashboard_id
+}
+
+# # COMMENTED OUT - Alert policies not created yet
+# output "monitoring_alert_policy_ids" {
+#   description = "List of created alert policy IDs"
+#   value       = module.monitoring.alert_policy_ids
+# }
+# 
+# output "monitoring_alert_policy_names" {
+#   description = "List of created alert policy names"
+#   value       = module.monitoring.alert_policy_names
+# }
+
+
+output "monitoring_notification_channel_id" {
+  description = "Email notification channel ID"
+  value       = module.monitoring.notification_channel_id
+}
+
+output "monitoring_notification_channel_email" {
+  description = "Email address for notifications"
+  value       = module.monitoring.notification_channel_email
 }

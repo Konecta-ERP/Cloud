@@ -27,6 +27,26 @@ module "vpc" {
 
   depends_on = [module.project_services]
 }
+# ============================================================================
+# FIREWALL RULES
+# ============================================================================
+
+module "firewall" {
+  source = "../../modules/firewall"
+
+  project_id = var.project_id
+  vpc_name   = "erp-vpc-dev"
+  network    = module.vpc.vpc_self_link
+
+  subnet_cidr   = "10.0.0.0/24"
+  pods_cidr     = "10.1.0.0/16"
+  services_cidr = "10.2.0.0/16"
+  master_cidr   = "172.16.0.0/28"
+
+  enable_ssh = false # Set to true if you need SSH access for debugging
+
+  depends_on = [module.vpc]
+}
 
 # ============================================================================
 # VPC CONNECTOR
@@ -328,4 +348,28 @@ module "cloud_nat" {
   log_filter     = "ERRORS_ONLY"
 
   depends_on = [module.vpc]
+}
+# # ============================================================================
+# # MONITORING
+# # ============================================================================
+
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  project_id             = var.project_id
+  alert_email            = "aminsherif659@gmail.com"  # Or use a variable
+  enable_alerts          = true
+  dashboard_display_name = "ERP Konecta - Dev Environment Monitoring"
+
+  # Alert thresholds (all optional - have defaults)
+  latency_threshold_ms        = 2000  # 2 seconds
+  error_rate_threshold        = 0.05  # 5%
+  cpu_utilization_threshold   = 0.85  # 85%
+
+  # Alert durations (optional)
+  alert_duration_latency = 300  # 5 minutes
+  alert_duration_error   = 300  # 5 minutes
+  alert_duration_cpu     = 600  # 10 minutes
+
+  depends_on = [module.gke_cluster, module.project_services]
 }
