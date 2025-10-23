@@ -61,6 +61,15 @@ resource "google_container_cluster" "primary" {
     horizontal_pod_autoscaling {
       disabled = false
     }
+    network_policy_config {
+      disabled = false
+    }
+  }
+
+  # Enable network policy
+  network_policy {
+    enabled  = true
+    provider = "PROVIDER_UNSPECIFIED"
   }
 
   # Release channel
