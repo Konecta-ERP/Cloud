@@ -61,25 +61,12 @@ resource "google_container_cluster" "primary" {
     horizontal_pod_autoscaling {
       disabled = false
     }
-    network_policy_config {
-      disabled = false
-    }
-  }
-
-  # Enable network policy
-  network_policy {
-    enabled  = true
-    provider = "PROVIDER_UNSPECIFIED"
   }
 
   # Release channel
   release_channel {
     channel = var.release_channel
   }
-
-  # Logging and monitoring
-  logging_service    = "logging.googleapis.com/kubernetes"
-  monitoring_service = "monitoring.googleapis.com/kubernetes"
 
   # Resource labels
   resource_labels = var.labels
